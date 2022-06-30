@@ -27,4 +27,4 @@ deploy:
       --exclude .git
       .
       ${!USER}@${!SERVER}:${!PROJECT_ON_SERVER}
-    - ssh -p ${!SSH_PORT} ${!USER}@${!SERVER} "set -e; cd ${!PROJECT_ON_SERVER}; yarn install; yarn build; chmod +x dist/main.js"
+    - ssh -p ${!SSH_PORT} ${!USER}@${!SERVER} "set -e; cd ${!PROJECT_ON_SERVER}; source ~/.bashrc; nvm use 16.15.1; yarn install; yarn build; chmod +x dist/main.js"
