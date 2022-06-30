@@ -1,0 +1,11 @@
+source-storage:
+  prefix: /home/media/data/
+  type: disk
+
+backup-storage:
+  prefix: media/
+  type: s3
+  endpoint: https://s3.ir-thr-at1.arvanstorage.com
+  credentials:
+    accessKeyId: 739fdb31-1173-4a12-b8a9-a7d32d765a2d
+    secretAccessKey: 36b066dd6ee3f1a51faf5a52db22c3c259fb00a8cee54b59a5524ec0d60726ee
