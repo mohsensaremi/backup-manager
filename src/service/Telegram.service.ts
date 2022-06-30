@@ -1,5 +1,5 @@
 import * as TelegramBot from 'node-telegram-bot-api';
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
@@ -7,6 +7,7 @@ export class TelegramService implements OnModuleInit {
   private bot?: TelegramBot;
   private token?: string;
   private defaultChatId?: string;
+  private logger = new Logger('TelegramService');
 
   constructor(private configService: ConfigService) {
     this.token = this.configService.get('telegram-bot-token');
@@ -20,6 +21,13 @@ export class TelegramService implements OnModuleInit {
   }
 
   async send(text: string, chatId?: string) {
-    await this.bot?.sendMessage((chatId || this.defaultChatId) as string, text);
+    try {
+      await this.bot?.sendMessage(
+        (chatId || this.defaultChatId) as string,
+        text,
+      );
+    } catch (error) {
+      this.logger.error(error, error.stack);
+    }
   }
 }
