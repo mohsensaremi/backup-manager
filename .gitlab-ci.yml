@@ -1,0 +1,30 @@
+stages:
+  - deploy
+
+variables:
+  SERVER: '${CI_COMMIT_REF_NAME}_SERVER'
+  USER: '${CI_COMMIT_REF_NAME}_USER'
+  SSH_PRIVATE_KEY: '${CI_COMMIT_REF_NAME}_SSH_PRIVATE_KEY'
+  PROJECT_ON_SERVER: '${CI_COMMIT_REF_NAME}_PROJECT_ON_SERVER'
+  SSH_PORT: '${CI_COMMIT_REF_NAME}_SSH_PORT'
+
+deploy:
+  stage: deploy
+  image: ubuntu:16.04
+  script:
+    - apt-get update -yqq
+    - 'which ssh-agent || ( apt-get update -y && apt-get install openssh-client -y )'
+    - apt-get install -y rsync
+    - mkdir -p ~/.ssh
+    - echo "${!SSH_PRIVATE_KEY}" | tr -d '\r' > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - eval "$(ssh-agent -s)"
+    - ssh-add ~/.ssh/id_rsa
+    - ssh-keyscan -p ${!SSH_PORT} -H ${!SERVER} >> ~/.ssh/known_hosts
+    - rsync -arcv -e "ssh -p ${!SSH_PORT}" --progress --human-readable --delete
+      --exclude-from '.gitignore'
+      --exclude .gitignore
+      --exclude .git
+      .
+      ${!USER}@${!SERVER}:${!PROJECT_ON_SERVER}
+    - ssh -p ${!SSH_PORT} ${!USER}@${!SERVER} "set -e; cd ${!PROJECT_ON_SERVER}; yarn install; yarn build; chmod +x dist/main.js"
