@@ -9,6 +9,7 @@ export class BackupCommand extends BaseCommand implements CommandRunner {
   }
 
   async run(passedParam: string[]): Promise<void> {
-    this.logService.log(passedParam);
+    this.logService.debug('BEGIN backup command');
+    console.log('passedParam', passedParam);
   }
 }
