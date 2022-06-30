@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+/* eslint-disable prefer-rest-params */
 import {
   ConsoleLogger,
   Injectable,
@@ -21,7 +23,8 @@ export class LogService extends ConsoleLogger implements LoggerService {
       return;
     }
 
-    super.log(message, context);
+    // @ts-ignore
+    super.log(...arguments);
     this.emitEvent('log', message, context);
   }
 
@@ -30,7 +33,8 @@ export class LogService extends ConsoleLogger implements LoggerService {
       return;
     }
 
-    super.error(message, stack, context);
+    // @ts-ignore
+    super.error(...arguments);
     this.emitEvent('error', message, context, stack);
   }
 
@@ -39,7 +43,8 @@ export class LogService extends ConsoleLogger implements LoggerService {
       return;
     }
 
-    super.warn(message, context);
+    // @ts-ignore
+    super.warn(...arguments);
     this.emitEvent('warn', message, context);
   }
 
@@ -48,7 +53,8 @@ export class LogService extends ConsoleLogger implements LoggerService {
       return;
     }
 
-    super.debug(message, context);
+    // @ts-ignore
+    super.debug(...arguments);
     this.emitEvent('debug', message, context);
   }
 
@@ -57,7 +63,8 @@ export class LogService extends ConsoleLogger implements LoggerService {
       return;
     }
 
-    super.verbose(message, context);
+    // @ts-ignore
+    super.verbose(...arguments);
     this.emitEvent('verbose', message, context);
   }
 

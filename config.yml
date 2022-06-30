@@ -1,3 +1,6 @@
+telegram-bot-token: 5514639809:AAF_a8K53xqPMs59BuZvJz0wdgRlr0xqzUw
+telegram-chat-id: -601754331
+
 source-storage:
   prefix: /home/media/data/
   type: disk

@@ -1,17 +1,49 @@
-import { Controller, LogLevel } from '@nestjs/common';
+import {
+  Controller,
+  LogLevel,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { isPlainObject } from '@nestjs/common/utils/shared.utils';
 import { OnEvent } from '@nestjs/event-emitter';
+import {
+  bufferTime,
+  interval,
+  lastValueFrom,
+  mergeMap,
+  Subject,
+  Subscription,
+  take,
+} from 'rxjs';
 import { LogEvent } from './event/Log.event';
 import { EVENT } from './event/pattern';
 import { TelegramService } from './service/Telegram.service';
 
 @Controller()
-export class LogController {
+export class LogController implements OnModuleInit, OnModuleDestroy {
+  private logsBuffer = new Subject<string>();
+  private sub?: Subscription;
+
   constructor(private readonly telegramService: TelegramService) {}
 
   @OnEvent(EVENT.log)
-  async handleLog(payload: LogEvent) {
-    await this.telegramService.send(this.formatLogEvent(payload));
+  handleLog(payload: LogEvent) {
+    this.logsBuffer.next(this.formatLogEvent(payload));
+  }
+
+  onModuleInit() {
+    this.sub = this.logsBuffer
+      .pipe(
+        bufferTime(60 * 1000),
+        mergeMap((logs) => this.telegramService.send(logs.join('\n'))),
+      )
+      .subscribe();
+  }
+
+  async onModuleDestroy() {
+    this.logsBuffer.complete();
+    await lastValueFrom(this.logsBuffer, { defaultValue: undefined });
+    this.sub?.unsubscribe();
   }
 
   private formatLogEvent(event: LogEvent) {

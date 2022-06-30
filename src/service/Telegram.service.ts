@@ -4,20 +4,22 @@ import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class TelegramService implements OnModuleInit {
-  private bot: TelegramBot;
-  private token: string;
-  private defaultChatId: string;
+  private bot?: TelegramBot;
+  private token?: string;
+  private defaultChatId?: string;
 
   constructor(private configService: ConfigService) {
-    this.token = this.configService.get('TELEGRAM_BOT_TOKEN', '');
-    this.defaultChatId = this.configService.get('TELEGRAM_BOT_CHAT_ID', '');
+    this.token = this.configService.get('telegram-bot-token');
+    this.defaultChatId = this.configService.get('telegram-chat-id');
   }
 
   onModuleInit() {
-    this.bot = new TelegramBot(this.token);
+    if (this.token) {
+      this.bot = new TelegramBot(this.token);
+    }
   }
 
   async send(text: string, chatId?: string) {
-    await this.bot.sendMessage(chatId || this.defaultChatId, text);
+    await this.bot?.sendMessage((chatId || this.defaultChatId) as string, text);
   }
 }
