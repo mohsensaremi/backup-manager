@@ -1,35 +1,49 @@
 import * as fs from 'fs';
 import * as NodejsPath from 'path';
 import { concatMap, filter, from, map, Observable, of } from 'rxjs';
-import { ReadableStreamFactory } from '../entity/ReadableStreamFactory';
-import { Storage } from './Storage';
-import { StorageFile } from '../entity/StorageFile';
 import { DiskFile } from '../entity/DiskFile';
+import { StorageFile } from '../entity/StorageFile';
+import { Storage } from './Storage';
+import { StorageRegistry } from './StorageRegistry';
 
 export class DiskStorage implements Storage {
-  constructor(private readonly readableStreamFactory: ReadableStreamFactory) {}
+  constructor(
+    readonly name: string,
+    private readonly registry: StorageRegistry,
+    private readonly basePath: string,
+  ) {}
 
-  files(basePath: string): Observable<DiskFile> {
-    return this.listFiles(basePath).pipe(map((path) => new DiskFile(path)));
+  files(): Observable<DiskFile> {
+    return this.listFiles(this.basePath).pipe(
+      map(
+        (path) =>
+          new DiskFile(
+            this.name,
+            path.replace(this.basePath, ''),
+            this.basePath,
+          ),
+      ),
+    );
   }
 
   async hasFile(file: StorageFile) {
     try {
-      await fs.promises.access(file.path);
-      const otherFile = new DiskFile(file.path);
+      await fs.promises.access(`${this.basePath}${file.path}`);
+      const otherFile = new DiskFile(this.name, file.path, this.basePath);
       return otherFile.isEqual(file);
     } catch {}
     return false;
   }
 
   async putFile(sourceFile: StorageFile) {
-    const inputStream = await this.readableStreamFactory.createReadStream(
-      sourceFile,
-    );
+    const inputStream = await this.registry
+      .lookupOrFail(sourceFile)
+      .createReadableStream(sourceFile);
 
-    const dir = NodejsPath.dirname(sourceFile.path);
-    await fs.promises.mkdir(dir, { recursive: true });
-    const outputStream = fs.createWriteStream(sourceFile.path);
+    const targetPath = `${this.basePath}${sourceFile.path}`;
+    const targetDir = NodejsPath.dirname(targetPath);
+    await fs.promises.mkdir(targetDir, { recursive: true });
+    const outputStream = fs.createWriteStream(targetPath);
 
     return new Promise<void>((resolve, reject) => {
       inputStream.pipe(outputStream);
@@ -43,6 +57,10 @@ export class DiskStorage implements Storage {
     });
   }
 
+  async createReadableStream(file: DiskFile) {
+    return fs.createReadStream(`${this.basePath}${file.path}`);
+  }
+
   private listFiles(path: string): Observable<string> {
     const filesInDir = (path: string) => from(fs.promises.readdir(path));
     const statFile = (path: string) => from(fs.promises.stat(path));
@@ -51,7 +69,7 @@ export class DiskStorage implements Storage {
       concatMap((file) => from(file)),
       filter((file) => !file.startsWith('.')),
       concatMap((file) =>
-        statFile(`${path}/${file}`).pipe(
+        statFile(this.fixPath(`${path}/${file}`)).pipe(
           map((sf) => {
             return { file, isDir: sf.isDirectory() };
           }),
@@ -59,10 +77,14 @@ export class DiskStorage implements Storage {
       ),
       concatMap((f) => {
         if (f.isDir) {
-          return this.listFiles(`${path}/${f.file}`);
+          return this.listFiles(this.fixPath(`${path}/${f.file}`));
         }
-        return of(`${path}/${f.file}`);
+        return of(this.fixPath(`${path}/${f.file}`));
       }),
     );
+  }
+
+  private fixPath(path: string) {
+    return path.replace(/\/+/g, '/');
   }
 }

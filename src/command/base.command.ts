@@ -4,7 +4,10 @@ import { LogService } from '../log.service';
 export abstract class BaseCommand implements CommandRunner {
   constructor(protected readonly logService: LogService) {}
 
-  abstract run(passedParam: string[]): Promise<void>;
+  abstract run(
+    passedParam: string[],
+    options?: Record<any, any>,
+  ): Promise<void>;
 
   @Option({
     flags: '-v, --verbose',
@@ -34,7 +37,7 @@ export abstract class BaseCommand implements CommandRunner {
     flags: '-c, --config [path]',
     description: 'config file path',
   })
-  getConfigFilePath(): void {
-    //this param was handled in configuration file
+  getConfigFilePath(path: string): string {
+    return path;
   }
 }

@@ -6,8 +6,11 @@ import {
 } from '@nestjs/common';
 import { isPlainObject } from '@nestjs/common/utils/shared.utils';
 import { OnEvent } from '@nestjs/event-emitter';
+import { chunk } from 'lodash';
 import {
   bufferTime,
+  concatMap,
+  from,
   lastValueFrom,
   mergeMap,
   Subject,
@@ -19,21 +22,26 @@ import { TelegramService } from './service/Telegram.service';
 
 @Controller()
 export class LogController implements OnModuleInit, OnModuleDestroy {
-  private logsBuffer = new Subject<string>();
+  private logsBuffer = new Subject<LogEvent>();
   private sub?: Subscription;
 
   constructor(private readonly telegramService: TelegramService) {}
 
   @OnEvent(EVENT.log)
   handleLog(payload: LogEvent) {
-    this.logsBuffer.next(this.formatLogEvent(payload));
+    this.logsBuffer.next(payload);
   }
 
   onModuleInit() {
     this.sub = this.logsBuffer
       .pipe(
         bufferTime(60 * 1000),
-        mergeMap((logs) => this.telegramService.send(logs.join('\n'))),
+        mergeMap((events) => from(chunk(events, 10))),
+        concatMap((events) =>
+          this.telegramService.send(
+            events.map((event) => this.formatLogEvent(event)).join('\n'),
+          ),
+        ),
       )
       .subscribe();
   }

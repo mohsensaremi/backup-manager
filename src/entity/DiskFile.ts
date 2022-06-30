@@ -4,8 +4,12 @@ import * as fs from 'fs';
 export class DiskFile extends StorageFile {
   stat?: fs.Stats;
 
-  constructor(public readonly path: string) {
-    super(path);
+  constructor(
+    public readonly storageName: string,
+    public readonly path: string,
+    public readonly basePath: string,
+  ) {
+    super(storageName, path);
   }
 
   async size() {
@@ -17,7 +21,7 @@ export class DiskFile extends StorageFile {
     if (this.stat) {
       return this.stat;
     }
-    this.stat = await fs.promises.stat(this.path);
+    this.stat = await fs.promises.stat(`${this.basePath}${this.path}`);
 
     return this.stat;
   }
