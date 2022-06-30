@@ -8,12 +8,10 @@ import { isPlainObject } from '@nestjs/common/utils/shared.utils';
 import { OnEvent } from '@nestjs/event-emitter';
 import {
   bufferTime,
-  interval,
   lastValueFrom,
   mergeMap,
   Subject,
   Subscription,
-  take,
 } from 'rxjs';
 import { LogEvent } from './event/Log.event';
 import { EVENT } from './event/pattern';

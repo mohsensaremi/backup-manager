@@ -29,4 +29,12 @@ export abstract class BaseCommand implements CommandRunner {
   setVVV(): void {
     this.logService.setLogLevels(['verbose', 'debug', 'log', 'warn', 'error']);
   }
+
+  @Option({
+    flags: '-c, --config [path]',
+    description: 'config file path',
+  })
+  getConfigFilePath(): void {
+    //this param was handled in configuration file
+  }
 }

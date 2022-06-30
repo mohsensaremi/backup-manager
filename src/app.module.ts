@@ -1,13 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
 import { EventEmitterModule } from '@nestjs/event-emitter';
-import { LogController } from './log.controller';
-import { TelegramService } from './service/Telegram.service';
 import { BackupCommand } from './command/backup.command';
-import { LogService } from './log.service';
 import configuration from './config/configuration';
+import { LogController } from './log.controller';
+import { LogService } from './log.service';
+import { TelegramService } from './service/Telegram.service';
 
 @Module({
   imports: [
@@ -17,7 +15,7 @@ import configuration from './config/configuration';
     }),
     EventEmitterModule.forRoot(),
   ],
-  controllers: [AppController, LogController],
-  providers: [AppService, TelegramService, BackupCommand, LogService],
+  controllers: [LogController],
+  providers: [TelegramService, BackupCommand, LogService],
 })
 export class AppModule {}
