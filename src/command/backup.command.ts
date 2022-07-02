@@ -19,7 +19,6 @@ import { LogService } from '../log.service';
 import { DiskStorage } from '../repository/DiskStorage';
 import { S3Storage } from '../repository/S3Storage';
 import { Storage } from '../repository/Storage';
-import { StorageRegistry } from '../repository/StorageRegistry';
 import { secondsToClock } from '../utils/clock';
 import { BaseCommand } from './base.command';
 
@@ -41,14 +40,11 @@ export class BackupCommand extends BaseCommand implements CommandRunner {
     try {
       const beginTime = Date.now();
 
-      this.logService.debug('creating storage registry');
-      const registry = new StorageRegistry();
-
       this.logService.debug('creating source storage');
-      const source = this.createStorage(options.source, registry);
+      const source = this.createStorage(options.source);
 
       this.logService.debug('creating target storage');
-      const target = this.createStorage(options.target, registry);
+      const target = this.createStorage(options.target);
 
       this.logService.debug('begin uploading files');
       const asyncIterable = source.filesIterable();
@@ -117,15 +113,9 @@ export class BackupCommand extends BaseCommand implements CommandRunner {
     }
   }
 
-  private createStorage(
-    input: StorageConfigInput,
-    registry: StorageRegistry,
-  ): Storage {
+  private createStorage(input: StorageConfigInput): Storage {
     if (input instanceof DiskStorageConfigInput) {
-      const storage = new DiskStorage(input.name, registry, input.basePath);
-      registry.register(storage);
-
-      return storage;
+      return new DiskStorage(input.basePath);
     } else if (input instanceof S3StorageConfigInput) {
       const s3 = new S3Client({
         region: 'default',
@@ -135,10 +125,7 @@ export class BackupCommand extends BaseCommand implements CommandRunner {
           secretAccessKey: input.credentials.secretAccessKey,
         },
       });
-      const storage = new S3Storage(input.name, registry, s3, input.bucket);
-      registry.register(storage);
-
-      return storage;
+      return new S3Storage(s3, input.bucket, this.logService);
     } else {
       throw new Error(`invalid input type ${input.constructor.name}`);
     }

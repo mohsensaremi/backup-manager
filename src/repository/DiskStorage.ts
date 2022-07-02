@@ -3,14 +3,9 @@ import * as NodejsPath from 'path';
 import { DiskFile } from '../entity/DiskFile';
 import { StorageFile } from '../entity/StorageFile';
 import { Storage } from './Storage';
-import { StorageRegistry } from './StorageRegistry';
 
 export class DiskStorage implements Storage {
-  constructor(
-    readonly name: string,
-    private readonly registry: StorageRegistry,
-    private readonly basePath: string,
-  ) {}
+  constructor(private readonly basePath: string) {}
 
   filesIterable(): AsyncIterable<DiskFile[]> {
     const dirs: string[] = [this.basePath];
@@ -31,11 +26,7 @@ export class DiskStorage implements Storage {
           dirs.push(fixedPath);
         } else {
           files.push(
-            new DiskFile(
-              this.name,
-              fixedPath.replace(this.basePath, ''),
-              this.basePath,
-            ),
+            new DiskFile(fixedPath.replace(this.basePath, ''), this.basePath),
           );
         }
       }
@@ -60,16 +51,14 @@ export class DiskStorage implements Storage {
   async hasFile(file: StorageFile) {
     try {
       await fs.promises.access(`${this.basePath}${file.path}`);
-      const otherFile = new DiskFile(this.name, file.path, this.basePath);
+      const otherFile = new DiskFile(file.path, this.basePath);
       return otherFile.isEqual(file);
     } catch {}
     return false;
   }
 
   async putFile(sourceFile: StorageFile) {
-    const inputStream = await this.registry
-      .lookupOrFail(sourceFile)
-      .createReadableStream(sourceFile);
+    const inputStream = await sourceFile.createReadableStream();
 
     const targetPath = `${this.basePath}${sourceFile.path}`;
     const targetDir = NodejsPath.dirname(targetPath);
@@ -86,10 +75,6 @@ export class DiskStorage implements Storage {
         reject(error);
       });
     });
-  }
-
-  async createReadableStream(file: DiskFile) {
-    return fs.createReadStream(`${this.basePath}${file.path}`);
   }
 
   private fixPath(path: string) {

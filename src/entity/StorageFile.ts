@@ -1,5 +1,7 @@
+import { Readable } from 'stream';
+
 export abstract class StorageFile {
-  constructor(readonly storageName: string, readonly path: string) {}
+  constructor(readonly path: string) {}
 
   async isEqual(other: StorageFile) {
     if (this.path === other.path) {
@@ -12,4 +14,6 @@ export abstract class StorageFile {
   }
 
   abstract size(): Promise<number>;
+
+  abstract createReadableStream(chunkSize?: number): Promise<Readable>;
 }

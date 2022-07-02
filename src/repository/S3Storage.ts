@@ -1,22 +1,25 @@
 import {
-  GetObjectCommand,
+  CompleteMultipartUploadCommand,
+  CompleteMultipartUploadCommandInput,
+  CreateMultipartUploadCommand,
   HeadObjectCommand,
   ListObjectsCommand,
   PutObjectCommand,
   S3Client,
+  UploadPartCommand,
+  UploadPartCommandInput,
 } from '@aws-sdk/client-s3';
-import { Readable } from 'stream';
 import { S3File } from '../entity/S3File';
 import { StorageFile } from '../entity/StorageFile';
 import { Storage } from './Storage';
-import { StorageRegistry } from './StorageRegistry';
+import * as stream from 'stream';
+import { LogService } from '../log.service';
 
 export class S3Storage implements Storage {
   constructor(
-    readonly name: string,
-    private readonly registry: StorageRegistry,
     private readonly s3Client: S3Client,
     private readonly bucket: string,
+    private readonly logService: LogService,
   ) {}
 
   filesIterable(): AsyncIterable<S3File[]> {
@@ -32,7 +35,7 @@ export class S3Storage implements Storage {
         if (response.Contents) {
           marker = response.Contents[response.Contents.length - 1].Key;
           const files = response.Contents.map(
-            (obj) => new S3File(this.name, obj),
+            (obj) => new S3File(obj, this.bucket, this.s3Client),
           );
           return { done: false, value: files };
         } else {
@@ -64,26 +67,105 @@ export class S3Storage implements Storage {
   }
 
   async putFile(sourceFile: StorageFile) {
-    const readable = await this.registry
-      .lookupOrFail(sourceFile)
-      .createReadableStream(sourceFile);
+    const size = await sourceFile.size();
+    // 400 MB
+    if (size < 1024 * 1024 * 400) {
+      const readable = await sourceFile.createReadableStream();
 
-    await this.s3Client.send(
-      new PutObjectCommand({
-        Bucket: this.bucket,
-        Key: sourceFile.path,
-        Body: readable,
-      }),
-    );
+      await this.s3Client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: sourceFile.path,
+          Body: readable,
+        }),
+      );
+    } else {
+      this.putMultipartFile(sourceFile);
+    }
   }
 
-  async createReadableStream(file: S3File) {
-    const data = await this.s3Client.send(
-      new GetObjectCommand({
-        Key: file.path,
+  private async putMultipartFile(sourceFile: StorageFile) {
+    const s3 = this.s3Client;
+    const { logService, bucket } = this;
+
+    const createMultipartUploadCommandOutput = await s3.send(
+      new CreateMultipartUploadCommand({
         Bucket: this.bucket,
+        Key: sourceFile.path,
       }),
     );
-    return data.Body as Readable;
+
+    const chunkSize = 1024 * 1024 * 10; // 10MB
+    const readable = await sourceFile.createReadableStream(chunkSize);
+    let writeIndex = 0;
+    const Parts: Array<{
+      ETag?: string;
+      PartNumber: number;
+    }> = [];
+    const writable = new stream.Writable({
+      write(chunk, encoding, next) {
+        (async () => {
+          try {
+            const PartNumber = writeIndex + 1;
+            logService.debug(
+              `sending multipart chunk ${PartNumber} (${sourceFile.path})`,
+              'S3Storage',
+            );
+
+            const uploadPartResponse = await s3.send(
+              new UploadPartCommand({
+                Body: chunk,
+                Bucket: bucket,
+                Key: sourceFile.path,
+                PartNumber: PartNumber,
+                UploadId: createMultipartUploadCommandOutput.UploadId,
+              }),
+            );
+
+            logService.debug(
+              `multipart chunk ${PartNumber} uploaded (${sourceFile.path})`,
+              'S3Storage',
+            );
+
+            Parts[PartNumber - 1] = {
+              ETag: uploadPartResponse.ETag,
+              PartNumber: PartNumber,
+            };
+
+            await s3.send(
+              new CompleteMultipartUploadCommand({
+                Bucket: bucket,
+                Key: sourceFile.path,
+                MultipartUpload: {
+                  Parts,
+                },
+                UploadId: createMultipartUploadCommandOutput.UploadId,
+              }),
+            );
+
+            logService.debug(
+              `multipart chunk ${PartNumber} completed (${sourceFile.path})`,
+              'S3Storage',
+            );
+
+            writeIndex++;
+            next();
+          } catch (e) {
+            next(e);
+          }
+        })();
+      },
+    });
+
+    return new Promise<void>((resolve, reject) => {
+      const pipe = readable.pipe(writable);
+
+      pipe.on('finish', () => {
+        resolve();
+      });
+      pipe.on('error', (error) => {
+        reject(error);
+      });
+    });
   }
 }
