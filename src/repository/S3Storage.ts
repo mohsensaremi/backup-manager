@@ -80,13 +80,14 @@ export class S3Storage implements Storage {
         }),
       );
     } else {
-      this.putMultipartFile(sourceFile);
+      this.debugLog(`skipping large file ${size} (${sourceFile.path})`);
+      // this.putMultipartFile(sourceFile);
     }
   }
 
   private async putMultipartFile(sourceFile: StorageFile) {
     const s3 = this.s3Client;
-    const { logService, bucket } = this;
+    const { debugLog, bucket } = this;
 
     const createMultipartUploadCommandOutput = await s3.send(
       new CreateMultipartUploadCommand({
@@ -107,9 +108,8 @@ export class S3Storage implements Storage {
         (async () => {
           try {
             const PartNumber = writeIndex + 1;
-            logService.debug(
+            debugLog(
               `sending multipart chunk ${PartNumber} (${sourceFile.path})`,
-              'S3Storage',
             );
 
             const uploadPartResponse = await s3.send(
@@ -122,9 +122,8 @@ export class S3Storage implements Storage {
               }),
             );
 
-            logService.debug(
+            debugLog(
               `multipart chunk ${PartNumber} uploaded (${sourceFile.path})`,
-              'S3Storage',
             );
 
             Parts[PartNumber - 1] = {
@@ -143,9 +142,8 @@ export class S3Storage implements Storage {
               }),
             );
 
-            logService.debug(
+            debugLog(
               `multipart chunk ${PartNumber} completed (${sourceFile.path})`,
-              'S3Storage',
             );
 
             writeIndex++;
@@ -167,5 +165,9 @@ export class S3Storage implements Storage {
         reject(error);
       });
     });
+  }
+
+  private debugLog(log: string) {
+    this.logService.debug(log, 'S3Storage');
   }
 }
