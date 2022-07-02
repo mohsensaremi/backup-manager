@@ -65,13 +65,13 @@ export class BackupCommand extends BaseCommand implements CommandRunner {
                 of(file).pipe(
                   filter((file) => {
                     if (options.source.exclude) {
-                      const shouldExclude = options.source.exclude.every(
+                      const shouldPass = options.source.exclude.every(
                         (ex) => file.path.indexOf(ex) === -1,
                       );
-                      if (shouldExclude) {
+                      if (!shouldPass) {
                         this.logService.debug(`${file.path} excluded`);
                       }
-                      return shouldExclude;
+                      return shouldPass;
                     }
                     return true;
                   }),
