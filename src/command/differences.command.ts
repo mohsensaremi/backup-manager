@@ -1,11 +1,12 @@
 import { ConfigService } from '@nestjs/config';
-import { Command, CommandRunner } from 'nest-commander';
+import { Command, CommandRunner, Option } from 'nest-commander';
 import {
   catchError,
   EMPTY,
   filter,
   from,
   lastValueFrom,
+  mapTo,
   mergeMap,
   of,
   tap,
@@ -15,14 +16,19 @@ import { LogService } from '../log.service';
 import { StorageRegistry } from '../repository/StorageRegistry';
 import { secondsToClock } from '../utils/clock';
 import { BaseCommand } from './base.command';
+import * as fs from 'fs';
 
 interface CommandOptions {
   source: StorageConfigInput;
   target: StorageConfigInput;
+  output?: string;
 }
 
-@Command({ name: 'backup', description: 'make backup from source to target' })
-export class BackupCommand extends BaseCommand implements CommandRunner {
+@Command({
+  name: 'differences',
+  description: 'Get differences between two storage',
+})
+export class DifferencesCommand extends BaseCommand implements CommandRunner {
   constructor(
     protected readonly logService: LogService,
     protected readonly configService: ConfigService,
@@ -32,6 +38,14 @@ export class BackupCommand extends BaseCommand implements CommandRunner {
 
   async run(passedParam: string[], options: CommandOptions): Promise<void> {
     try {
+      if (!options.output) {
+        this.logService.error('output file required');
+      }
+      const writeStream = fs.createWriteStream(
+        options.output as string,
+        'utf-8',
+      );
+
       const beginTime = Date.now();
 
       this.logService.debug('creating storage registry');
@@ -43,14 +57,8 @@ export class BackupCommand extends BaseCommand implements CommandRunner {
       this.logService.debug('creating target storage');
       const target = this.createStorage(options.target, registry);
 
-      this.logService.debug('begin uploading files');
-      const asyncIterable = source.filesIterable();
-      let i = 0;
-      for await (const files of asyncIterable) {
-        i++;
-        this.logService.debug(
-          `processing chunk ${i} with ${files.length} items`,
-        );
+      this.logService.debug('begin processing');
+      for await (const files of source.filesIterable()) {
         await lastValueFrom(
           from(files).pipe(
             mergeMap(
@@ -68,37 +76,24 @@ export class BackupCommand extends BaseCommand implements CommandRunner {
                     }
                     return true;
                   }),
-                  tap((file) =>
-                    this.logService.debug(`checking ${file.path} existence`),
-                  ),
-                  mergeMap((file) =>
-                    from(target.hasFile(file)).pipe(
-                      mergeMap((hasFile) => {
-                        if (hasFile) {
-                          this.logService.debug(
-                            `file ${file.path} already exists. skip uploading`,
-                          );
-                          return EMPTY;
-                        } else {
-                          this.logService.log(`uploading ${file.path}`);
-                          return target.putFile(file);
-                        }
-                      }),
-                    ),
-                  ),
-                  tap(() => this.logService.log(`${file.path} uploaded`)),
+                  tap((file) => this.logService.debug(`checking ${file.path}`)),
+                  mergeMap((file) => target.hasFile(file)),
+                  filter((hasFile) => !hasFile),
+                  tap(() => this.logService.log(`${file.path} not exist`)),
+                  tap(() => writeStream.write(`${file.path}\n`)),
                   catchError((error) => {
                     this.logService.error(`error while uploading ${file.path}`);
                     this.logService.error(error, error.stack);
                     return EMPTY;
                   }),
                 ),
-              20,
+              100,
             ),
           ),
           { defaultValue: undefined },
         );
       }
+      writeStream.end();
 
       this.logService.log(
         `backup competed in ${secondsToClock(
@@ -108,5 +103,13 @@ export class BackupCommand extends BaseCommand implements CommandRunner {
     } catch (e) {
       this.logService.error(e, e.stack);
     }
+  }
+
+  @Option({
+    flags: '-o, --output [output]',
+    description: 'output file',
+  })
+  getOutputPath(path: string): string {
+    return path;
   }
 }
