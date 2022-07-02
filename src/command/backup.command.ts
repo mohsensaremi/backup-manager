@@ -1,32 +1,27 @@
-import { ConfigService } from '@nestjs/config';
-import {
-  ClassConstructor,
-  plainToClass,
-  plainToInstance,
-} from 'class-transformer';
-import { transformAndValidateSync } from 'class-transformer-validator';
-import { validateSync } from 'class-validator';
-import { Command, CommandRunner, Option } from 'nest-commander';
-import { StorageRegistry } from '../repository/StorageRegistry';
-import { DiskStorageConfigInput } from '../input/DiskStorageConfig.input';
-import { S3StorageConfigInput } from '../input/S3StorageConfig.input';
-import { StorageConfigInput } from '../input/StorageConfig.input';
-import { LogService } from '../log.service';
-import { BaseCommand } from './base.command';
 import { S3Client } from '@aws-sdk/client-s3';
-import { S3Storage } from '../repository/S3Storage';
-import { DiskStorage } from '../repository/DiskStorage';
-import { Storage } from '../repository/Storage';
+import { ConfigService } from '@nestjs/config';
+import { transformAndValidateSync } from 'class-transformer-validator';
+import { Command, CommandRunner, Option } from 'nest-commander';
 import {
   catchError,
   EMPTY,
+  filter,
   from,
   lastValueFrom,
   mergeMap,
   of,
   tap,
 } from 'rxjs';
+import { DiskStorageConfigInput } from '../input/DiskStorageConfig.input';
+import { S3StorageConfigInput } from '../input/S3StorageConfig.input';
+import { StorageConfigInput } from '../input/StorageConfig.input';
+import { LogService } from '../log.service';
+import { DiskStorage } from '../repository/DiskStorage';
+import { S3Storage } from '../repository/S3Storage';
+import { Storage } from '../repository/Storage';
+import { StorageRegistry } from '../repository/StorageRegistry';
 import { secondsToClock } from '../utils/clock';
+import { BaseCommand } from './base.command';
 
 interface CommandOptions {
   source: StorageConfigInput;
@@ -56,41 +51,62 @@ export class BackupCommand extends BaseCommand implements CommandRunner {
       const target = this.createStorage(options.target, registry);
 
       this.logService.debug('begin uploading files');
-      await lastValueFrom(
-        source.files().pipe(
-          mergeMap(
-            (file) =>
-              of(file).pipe(
-                tap((file) =>
-                  this.logService.debug(`checking ${file.path} existence`),
-                ),
-                mergeMap((file) =>
-                  from(target.hasFile(file)).pipe(
-                    mergeMap((hasFile) => {
-                      if (hasFile) {
-                        this.logService.debug(
-                          `file ${file.path} already exists. skip uploading`,
-                        );
-                        return EMPTY;
-                      } else {
-                        this.logService.log(`uploading ${file.path}`);
-                        return target.putFile(file);
+      const asyncIterable = source.filesIterable();
+      let i = 0;
+      for await (const files of asyncIterable) {
+        i++;
+        this.logService.debug(
+          `processing chunk ${i} with ${files.length} items`,
+        );
+        await lastValueFrom(
+          from(files).pipe(
+            mergeMap(
+              (file) =>
+                of(file).pipe(
+                  filter((file) => {
+                    if (options.source.exclude) {
+                      const shouldExclude = options.source.exclude.every(
+                        (ex) => file.path.indexOf(ex) === -1,
+                      );
+                      if (shouldExclude) {
+                        this.logService.debug(`${file.path} excluded`);
                       }
-                    }),
+                      return shouldExclude;
+                    }
+                    return true;
+                  }),
+                  tap((file) =>
+                    this.logService.debug(`checking ${file.path} existence`),
                   ),
+                  mergeMap((file) =>
+                    from(target.hasFile(file)).pipe(
+                      mergeMap((hasFile) => {
+                        if (hasFile) {
+                          this.logService.debug(
+                            `file ${file.path} already exists. skip uploading`,
+                          );
+                          return EMPTY;
+                        } else {
+                          this.logService.log(`uploading ${file.path}`);
+                          return target.putFile(file);
+                        }
+                      }),
+                    ),
+                  ),
+                  tap(() => this.logService.log(`${file.path} uploaded`)),
+                  catchError((error) => {
+                    this.logService.error(`error while uploading ${file.path}`);
+                    this.logService.error(error, error.stack);
+                    return EMPTY;
+                  }),
                 ),
-                tap(() => this.logService.log(`${file.path} uploaded`)),
-                catchError((error) => {
-                  this.logService.error(`error while uploading ${file.path}`);
-                  this.logService.error(error, error.stack);
-                  return EMPTY;
-                }),
-              ),
-            20,
+              20,
+            ),
           ),
-        ),
-        { defaultValue: undefined },
-      );
+          { defaultValue: undefined },
+        );
+      }
+
       this.logService.log(
         `backup competed in ${secondsToClock(
           Math.round((Date.now() - beginTime) / 1000),

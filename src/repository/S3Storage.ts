@@ -1,13 +1,12 @@
 import {
-  HeadObjectCommand,
-  PutObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
+  ListObjectsCommand,
+  PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
-import { EMPTY, Observable } from 'rxjs';
-import { S3File } from '../entity/S3File';
 import { Readable } from 'stream';
-import { DiskFile } from '../entity/DiskFile';
+import { S3File } from '../entity/S3File';
 import { StorageFile } from '../entity/StorageFile';
 import { Storage } from './Storage';
 import { StorageRegistry } from './StorageRegistry';
@@ -20,8 +19,31 @@ export class S3Storage implements Storage {
     private readonly bucket: string,
   ) {}
 
-  files(): Observable<DiskFile> {
-    return EMPTY;
+  filesIterable(): AsyncIterable<S3File[]> {
+    let marker: string | undefined = undefined;
+    const asyncIterator: AsyncIterator<S3File[]> = {
+      next: async () => {
+        const response = await this.s3Client.send(
+          new ListObjectsCommand({
+            Bucket: this.bucket,
+            Marker: marker,
+          }),
+        );
+        if (response.Contents) {
+          marker = response.Contents[response.Contents.length - 1].Key;
+          const files = response.Contents.map(
+            (obj) => new S3File(this.name, obj),
+          );
+          return { done: false, value: files };
+        } else {
+          return { done: true, value: undefined };
+        }
+      },
+    };
+
+    return {
+      [Symbol.asyncIterator]: () => asyncIterator,
+    };
   }
 
   async hasFile(file: StorageFile) {

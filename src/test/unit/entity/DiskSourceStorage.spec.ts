@@ -9,7 +9,7 @@ describe('DiskStorage', () => {
     it('should return files', async () => {
       const obj = new DiskStorage();
       const result = await lastValueFrom(
-        obj.files(rootDir).pipe(
+        obj.filesIterable(rootDir).pipe(
           map((s) => s.path),
           toArray(),
         ),

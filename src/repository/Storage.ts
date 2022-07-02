@@ -1,11 +1,10 @@
-import { Observable } from 'rxjs';
 import { Readable } from 'stream';
 import { StorageFile } from '../entity/StorageFile';
 
 export interface Storage {
   name: string;
 
-  files(): Observable<StorageFile>;
+  filesIterable(): AsyncIterable<StorageFile[]>;
 
   hasFile(file: StorageFile): Promise<boolean>;
 

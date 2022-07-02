@@ -1,4 +1,4 @@
-import { IsString } from 'class-validator';
+import { IsArray, IsOptional, IsString } from 'class-validator';
 
 export abstract class StorageConfigInput {
   @IsString()
@@ -6,4 +6,9 @@ export abstract class StorageConfigInput {
 
   @IsString()
   name: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  exclude?: string[] | null;
 }

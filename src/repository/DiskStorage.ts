@@ -1,6 +1,5 @@
 import * as fs from 'fs';
 import * as NodejsPath from 'path';
-import { concatMap, filter, from, map, Observable, of } from 'rxjs';
 import { DiskFile } from '../entity/DiskFile';
 import { StorageFile } from '../entity/StorageFile';
 import { Storage } from './Storage';
@@ -13,17 +12,45 @@ export class DiskStorage implements Storage {
     private readonly basePath: string,
   ) {}
 
-  files(): Observable<DiskFile> {
-    return this.listFiles(this.basePath).pipe(
-      map(
-        (path) =>
-          new DiskFile(
-            this.name,
-            path.replace(this.basePath, ''),
-            this.basePath,
-          ),
-      ),
-    );
+  filesIterable(): AsyncIterable<DiskFile[]> {
+    const dirs: string[] = [this.basePath];
+
+    const asyncIterator: AsyncIterator<DiskFile[]> = {
+      next: async (): Promise<
+        IteratorResult<DiskFile[], DiskFile[] | undefined>
+      > => {
+        const dir = dirs.shift();
+        if (!dir) {
+          return { done: true, value: undefined };
+        }
+        const filesAndDirs = await fs.promises.readdir(dir);
+        const files: DiskFile[] = [];
+        for (let i = 0; i < filesAndDirs.length; i++) {
+          const path = filesAndDirs[i];
+          const fixedPath = this.fixPath(`${dir}/${path}`);
+          const stat = await fs.promises.stat(fixedPath);
+          if (stat.isDirectory()) {
+            dirs.push(fixedPath);
+          } else {
+            files.push(
+              new DiskFile(
+                this.name,
+                fixedPath.replace(this.basePath, ''),
+                this.basePath,
+              ),
+            );
+          }
+        }
+        if (files.length === 0) {
+          return asyncIterator.next();
+        }
+        return { done: false, value: files };
+      },
+    };
+
+    return {
+      [Symbol.asyncIterator]: () => asyncIterator,
+    };
   }
 
   async hasFile(file: StorageFile) {
@@ -59,29 +86,6 @@ export class DiskStorage implements Storage {
 
   async createReadableStream(file: DiskFile) {
     return fs.createReadStream(`${this.basePath}${file.path}`);
-  }
-
-  private listFiles(path: string): Observable<string> {
-    const filesInDir = (path: string) => from(fs.promises.readdir(path));
-    const statFile = (path: string) => from(fs.promises.stat(path));
-
-    return filesInDir(path).pipe(
-      concatMap((file) => from(file)),
-      filter((file) => !file.startsWith('.')),
-      concatMap((file) =>
-        statFile(this.fixPath(`${path}/${file}`)).pipe(
-          map((sf) => {
-            return { file, isDir: sf.isDirectory() };
-          }),
-        ),
-      ),
-      concatMap((f) => {
-        if (f.isDir) {
-          return this.listFiles(this.fixPath(`${path}/${f.file}`));
-        }
-        return of(this.fixPath(`${path}/${f.file}`));
-      }),
-    );
   }
 
   private fixPath(path: string) {
