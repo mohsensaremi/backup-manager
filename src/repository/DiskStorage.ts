@@ -14,38 +14,42 @@ export class DiskStorage implements Storage {
 
   filesIterable(): AsyncIterable<DiskFile[]> {
     const dirs: string[] = [this.basePath];
-
+    const next = async (
+      initialFiles?: DiskFile[],
+    ): Promise<IteratorResult<DiskFile[], DiskFile[] | undefined>> => {
+      const dir = dirs.shift();
+      if (!dir) {
+        return { done: true, value: undefined };
+      }
+      const filesAndDirs = await fs.promises.readdir(dir);
+      const files: DiskFile[] = initialFiles || [];
+      for (let i = 0; i < filesAndDirs.length; i++) {
+        const path = filesAndDirs[i];
+        const fixedPath = this.fixPath(`${dir}/${path}`);
+        const stat = await fs.promises.stat(fixedPath);
+        if (stat.isDirectory()) {
+          dirs.push(fixedPath);
+        } else {
+          files.push(
+            new DiskFile(
+              this.name,
+              fixedPath.replace(this.basePath, ''),
+              this.basePath,
+            ),
+          );
+        }
+      }
+      if (files.length === 0) {
+        return asyncIterator.next();
+      } else if (files.length < 50) {
+        return next(files);
+      }
+      return { done: false, value: files };
+    };
     const asyncIterator: AsyncIterator<DiskFile[]> = {
       next: async (): Promise<
         IteratorResult<DiskFile[], DiskFile[] | undefined>
-      > => {
-        const dir = dirs.shift();
-        if (!dir) {
-          return { done: true, value: undefined };
-        }
-        const filesAndDirs = await fs.promises.readdir(dir);
-        const files: DiskFile[] = [];
-        for (let i = 0; i < filesAndDirs.length; i++) {
-          const path = filesAndDirs[i];
-          const fixedPath = this.fixPath(`${dir}/${path}`);
-          const stat = await fs.promises.stat(fixedPath);
-          if (stat.isDirectory()) {
-            dirs.push(fixedPath);
-          } else {
-            files.push(
-              new DiskFile(
-                this.name,
-                fixedPath.replace(this.basePath, ''),
-                this.basePath,
-              ),
-            );
-          }
-        }
-        if (files.length === 0) {
-          return asyncIterator.next();
-        }
-        return { done: false, value: files };
-      },
+      > => next(),
     };
 
     return {
