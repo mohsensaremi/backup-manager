@@ -12,7 +12,6 @@ import {
 } from 'rxjs';
 import { StorageConfigInput } from '../input/StorageConfig.input';
 import { LogService } from '../log.service';
-import { StorageRegistry } from '../repository/StorageRegistry';
 import { secondsToClock } from '../utils/clock';
 import { BaseCommand } from './base.command';
 
@@ -34,14 +33,11 @@ export class BackupCommand extends BaseCommand implements CommandRunner {
     try {
       const beginTime = Date.now();
 
-      this.logService.debug('creating storage registry');
-      const registry = new StorageRegistry();
-
       this.logService.debug('creating source storage');
-      const source = this.createStorage(options.source, registry);
+      const source = this.createStorage(options.source);
 
       this.logService.debug('creating target storage');
-      const target = this.createStorage(options.target, registry);
+      const target = this.createStorage(options.target);
 
       this.logService.debug('begin uploading files');
       const asyncIterable = source.filesIterable();
