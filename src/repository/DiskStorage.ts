@@ -32,7 +32,7 @@ export class DiskStorage implements Storage {
       }
       if (files.length === 0) {
         return asyncIterator.next();
-      } else if (files.length < 50) {
+      } else if (files.length < 1000) {
         return next(files);
       }
       return { done: false, value: files };
